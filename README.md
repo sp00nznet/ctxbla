@@ -15,13 +15,14 @@ No emulation. No interpreter. The original PowerPC code is translated directly i
 | XenonRecomp configuration | Done |
 | PPC -> C++ recompilation | In Progress |
 | Switch table detection | Not Started |
-| ReXGlue SDK v0.2.0 runtime | In Progress |
+| ReXGlue SDK v0.2.0 runtime | Done |
+| Keyboard input driver | Done |
+| Frame timing (60 Hz) | Done |
+| Timebase scaling (49.875 MHz) | Done |
 | Window + D3D12 rendering | Not Started |
 | Audio (ADX/AFS via CRI) | Not Started |
-| Input (keyboard + gamepad) | Not Started |
-| Frame timing (60 Hz) | Not Started |
 | Content / license unlock | Not Started |
-| Settings & config menu | Not Started |
+| Settings & config menu | In Progress |
 
 ## Game Information
 
@@ -71,6 +72,7 @@ ctxbla/
 │   └── src/
 │       ├── main.cpp            # CrazyTaxiApp (ReXApp), VEH, crash logging
 │       ├── stubs.cpp           # Game-specific Xbox 360 API stubs
+│       ├── keyboard_driver.cpp/h # Keyboard-to-gamepad input mapping
 │       ├── settings.cpp/h      # TOML-based settings persistence
 │       └── menu.cpp/h          # Win32 menu bar + ImGui dialogs
 ├── scripts/

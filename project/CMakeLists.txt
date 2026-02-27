@@ -22,6 +22,7 @@ add_executable(crazytaxi WIN32
     src/stubs.cpp
     src/settings.cpp
     src/menu.cpp
+    src/keyboard_driver.cpp
     ${CRAZYTAXI_GENERATED_SOURCES}
 )
 
@@ -42,6 +43,7 @@ target_link_libraries(crazytaxi PRIVATE
     rex::system
     rex::kernel
     rex::graphics
+    rex::input
     rex::ui
 )
 
