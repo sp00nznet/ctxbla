@@ -1,0 +1,21 @@
+# ReXGlue SDK code generation config for Crazy Taxi (XBLA)
+# Generates crazytaxi_init.cpp/h and crazytaxi_config.h
+
+[main]
+app_name = "crazytaxi"
+xex_path = "../extracted/default.xex"
+ppc_directory = "../ppc"
+out_directory = "../generated"
+
+# Address layout from PE analysis
+image_base = 0x82000000
+code_base = 0x820C0000
+code_size = 0x00209000
+image_size = 0x00BC0000
+
+# Entry point (_xstart)
+entry_point = 0x8212A5F0
+
+# Import table
+idata_base = 0x82980000
+idata_size = 0x00000384

@@ -1,0 +1,22 @@
+# XenonRecomp configuration for Crazy Taxi (XBLA)
+# Title ID: 0x58410A34
+
+[main]
+file_path = "../extracted/default.xex"
+out_directory_path = "../ppc"
+switch_table_file_path = "crazytaxi_switch_tables.toml"
+
+# ABI register save/restore function addresses
+savegprlr_14_address = 0x821843D0
+restgprlr_14_address = 0x82184420
+savefpr_14_address = 0x82184A50
+restfpr_14_address = 0x82184A9C
+savevmx_14_address = 0x82186BD0
+restvmx_14_address = 0x82186E68
+savevmx_64_address = 0x82186C64
+restvmx_64_address = 0x82186EFC
+
+# Manually-defined function boundaries (add as needed during recomp)
+# functions = [
+#     { address = 0x82XXXXXX, size = 0xXX },
+# ]

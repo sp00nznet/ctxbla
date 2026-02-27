@@ -1,0 +1,37 @@
+# Extracted game data (bring your own XEX)
+extracted/
+*.rar
+*.zip
+*.7z
+
+# PPC recompiled output (generated, ~60MB+)
+ppc/ppc_recomp.*.cpp
+ppc/ppc_func_mapping.cpp
+
+# ReXGlue SDK (external dependency)
+tools/rexglue-sdk/
+
+# Build artifacts
+build/
+out/
+cmake-build-*/
+.vs/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.lib
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc

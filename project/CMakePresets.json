@@ -1,0 +1,34 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "win-amd64",
+      "displayName": "Windows x64 (Clang, Ninja)",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_FLAGS": "-march=x86-64-v3",
+        "CMAKE_CXX_FLAGS": "-march=x86-64-v3"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "win-amd64-debug",
+      "configurePreset": "win-amd64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "win-amd64-release",
+      "configurePreset": "win-amd64",
+      "configuration": "Release"
+    },
+    {
+      "name": "win-amd64-relwithdebinfo",
+      "configurePreset": "win-amd64",
+      "configuration": "RelWithDebInfo"
+    }
+  ]
+}
