@@ -63,6 +63,23 @@ No `setjmp`/`longjmp` detected.
 | SoundData/music_adx/ | ~88 MB | 14 ADX music tracks |
 | NewTexture/*.jpk | ~31 MB | Localized texture packs (6 languages) |
 
+## Import Libraries
+
+The XEX imports from two Xbox 360 system libraries:
+
+| Library | Version | Records | Description |
+|---------|---------|---------|-------------|
+| xam.xex | 32.45.27136 | 86 | Xbox Application Manager (UI, user profiles, content, achievements) |
+| xboxkrnl.exe | 32.45.27136 | 292 | Xbox kernel (memory, threads, I/O, video, audio, input) |
+
+Import thunks are located at `0x822C37DC` - `0x822C433C` (after main code, before data).
+XAM imports include 43 functions, xboxkrnl imports include 146 functions.
+
+The ReXGlue SDK's `rex::kernel` library provides implementations for all standard
+kernel/XAM ordinals. Game-specific overrides are in `project/src/stubs.cpp`.
+
+Use `tools/parse_xex_imports.py` for detailed ordinal analysis.
+
 ## Notes
 
 - The `PSFD00` section likely contains CRI Middleware code (Crazy Taxi uses CRI's ADX audio and AFS archive format)
