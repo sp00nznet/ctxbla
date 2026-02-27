@@ -12,7 +12,7 @@ import sys
 import os
 
 PE_BASE = 0x82000000
-PE_FILE = os.path.join(os.path.dirname(__file__), "..", "extracted", "pe_image.bin")
+PE_FILE = os.path.join(os.path.dirname(__file__), "..", "extracted", "default_pe.exe")
 
 # Pattern: add r12,r12,r0 (7D8C0214) + mtctr r12 (7D8903A6) + bctr (4E800420)
 PATTERN = bytes.fromhex("7D8C0214" "7D8903A6" "4E800420")
@@ -396,7 +396,7 @@ def main():
         pos = idx + 12
 
     # Output TOML
-    print(f"# Auto-generated switch tables for Simpsons Arcade (XBLA)")
+    print(f"# Auto-generated switch tables for Crazy Taxi (XBLA)")
     print(f"# Found {len(switches)} switch table sites")
     print()
 

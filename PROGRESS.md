@@ -43,9 +43,13 @@
   - VdSwap precise frame pacing
   - Timebase scaling (__rdtsc -> Xbox 360 49.875 MHz)
 
-## Phase 3: PPC Recompilation (TODO)
+- Added keyboard-to-gamepad input driver (racing layout: Space=accel, Shift=brake, C=drift)
+- Added XEX import parser tool (tools/parse_xex_imports.py)
+- Documented speed fix (docs/speed-fix.md)
 
-- [ ] Detect switch tables
+## Phase 3: PPC Recompilation (IN PROGRESS)
+
+- [x] Detect switch tables (13 found, auto-extracted)
 - [ ] Run XenonRecomp with patches
 - [ ] Resolve missing instructions (if any)
 - [ ] Generate ReXGlue bindings
@@ -63,8 +67,8 @@
 ## Phase 5: Polish (TODO)
 
 - [ ] Audio (ADX music, sound effects)
-- [ ] Keyboard input mapping
-- [ ] Gamepad support
+- [x] Keyboard input mapping (done)
+- [ ] Gamepad support (SDL, via rex::input)
 - [ ] Content/license unlock
 - [ ] Achievement display
 - [ ] ImGui config dialogs

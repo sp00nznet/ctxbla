@@ -14,7 +14,7 @@ No emulation. No interpreter. The original PowerPC code is translated directly i
 | PE analysis & ABI scanning | Done |
 | XenonRecomp configuration | Done |
 | PPC -> C++ recompilation | In Progress |
-| Switch table detection | Not Started |
+| Switch table detection | Done (13 tables) |
 | ReXGlue SDK v0.2.0 runtime | Done |
 | Keyboard input driver | Done |
 | Frame timing (60 Hz) | Done |
