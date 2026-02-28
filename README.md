@@ -6,6 +6,9 @@ A static recompilation of [Crazy Taxi](https://en.wikipedia.org/wiki/Crazy_Taxi)
 
 No emulation. No interpreter. The original PowerPC code is translated directly into C++ that compiles to native x64. It's like getting a fare from 2010 and drifting it straight into 2026.
 
+![Gameplay - cruising for fares](images/screenshot.png)
+![Fare drop-off - $389.50 earned](images/screenshot2.png)
+
 ## Status
 
 | Milestone | Status |
@@ -13,14 +16,16 @@ No emulation. No interpreter. The original PowerPC code is translated directly i
 | STFS / XEX extraction | Done |
 | PE analysis & ABI scanning | Done |
 | XenonRecomp configuration | Done |
-| PPC -> C++ recompilation | In Progress |
+| PPC -> C++ recompilation | Done (9,008 functions) |
 | Switch table detection | Done (13 tables) |
-| ReXGlue SDK v0.2.0 runtime | Done |
+| XenonRecomp instruction patches | Done (23 new handlers) |
+| ReXGlue SDK runtime | Done |
+| First boot | Done |
+| D3D12 GPU rendering | Done (1280x720 framebuffer) |
 | Keyboard input driver | Done |
-| Frame timing (60 Hz) | Done |
+| Xbox controller (XInput) | Done |
 | Timebase scaling (49.875 MHz) | Done |
-| Window + D3D12 rendering | Not Started |
-| Audio (ADX/AFS via CRI) | Not Started |
+| Audio (XMA/ADX) | Partial (title/demo audio works, no in-game audio) |
 | Content / license unlock | Not Started |
 | Settings & config menu | In Progress |
 
@@ -100,8 +105,8 @@ ctxbla/
 - **Clang** 18+ (LLVM)
 - **Ninja** build system
 - **Python** 3.8+ (for extraction tools)
-- **ReXGlue SDK** v0.2.0+ ([rexglue-sdk](https://github.com/rexglue/rexglue-sdk))
-- **XenonRecomp** (with Altivec/VMX patches applied)
+- **ReXGlue SDK** v0.1.0 ([rexglue-sdk](https://github.com/rexglue/rexglue-sdk))
+- **XenonRecomp** (with custom instruction patches -- see tools/patches/)
 
 ## Quick Start
 
@@ -117,7 +122,7 @@ py tools/extract_pe.py extracted/default.xex extracted/default_pe.exe
 
 **3. Run XenonRecomp to translate PPC -> C++:**
 ```bash
-xenonrecomp config/crazytaxi.toml
+XenonRecomp config/crazytaxi.toml
 ```
 
 **4. Generate ReXGlue SDK bindings:**
@@ -128,9 +133,13 @@ rexglue codegen config/crazytaxi_rexglue.toml
 **5. Build and run:**
 ```bash
 cd project
-cmake --preset win-amd64
-cmake --build --preset win-amd64-release
-./out/build/win-amd64/Release/crazytaxi path/to/extracted/
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang.exe" \
+  -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" \
+  -DCMAKE_LINKER="C:/Program Files/LLVM/bin/lld-link.exe" \
+  -DCMAKE_RC_COMPILER="C:/Program Files/LLVM/bin/llvm-rc.exe"
+ninja -C build
+./build/crazytaxi path/to/extracted/
 ```
 
 ## How It Works
@@ -147,8 +156,16 @@ Xbox 360 games expect a 49.875 MHz timebase clock and 60 Hz VSync. Modern PCs ha
 
 Two fixes are applied (ported from [simpsonsarcade](https://github.com/sp00nznet/simpsonsarcade)):
 
-1. **VdSwap frame limiter** -- Uses `QueryPerformanceCounter` for precise 60 Hz frame pacing instead of `Sleep(16)` which actually sleeps ~31ms on Windows
-2. **Timebase scaling** -- Overrides `__rdtsc()` (generated for PPC `mftb` instructions) to return scaled values matching the Xbox 360's 49.875 MHz clock
+1. **Timebase scaling** -- Overrides `__rdtsc()` (generated for PPC `mftb` instructions) to return scaled values matching the Xbox 360's 49.875 MHz clock via `rex::chrono::Clock::QueryGuestTickCount()`
+2. **Physical address offset** -- Maps physical addresses >= 0xE0000000 at +0x1000 offset for VEH-based MMIO interception (GPU/XMA register access)
+
+## Known Issues
+
+- **Crashes during gameplay** -- The game can crash during fare drop-offs and at high speed (e.g. driving downhill fast). Stability is still a work in progress.
+- **Title screen timing** -- You must wait until the "Hey Hey, Crazy Taxi!" voice line plays before pressing Start. Pressing Start too early will leave you stuck at the menu.
+- **Alt-tab breaks arcade mode** -- If you alt-tab away after selecting Arcade Rules, the game will hang on a black screen.
+- **No in-game audio** -- XMA register 0x0601 is unhandled (SDK limitation). Title screen and demo audio works.
+- **Garbled XAM dialogs** -- Sign-in prompts show corrupted/wingdings text. You can fumble through them to reach the main menu.
 
 ## References
 

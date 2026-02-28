@@ -1,175 +1,384 @@
-// Crazy Taxi (XBLA) -- Static Recompilation
-// Main application using ReXGlue SDK v0.2.0
+// crazytaxi - ReXGlue Recompiled Project
+// Crazy Taxi (XBLA) Static Recompilation
 
-#include "generated/crazytaxi_config.h"
-#include "generated/crazytaxi_init.h"
-#include "settings.h"
-#include "menu.h"
+#include "crazytaxi_config.h"
+#include "crazytaxi_init.h"
+#include "keyboard_driver.h"
 
-#include <rex/rex_app.h>
+#include <rex/cvar.h>
+#include <rex/filesystem.h>
+#include <rex/runtime.h>
 #include <rex/logging.h>
+#include <rex/kernel/xthread.h>
+#include <rex/kernel/kernel_state.h>
+#include <rex/input/input_system.h>
+#include <rex/graphics/graphics_system.h>
+#include <rex/ui/window.h>
+#include <rex/ui/window_listener.h>
+#include <rex/ui/windowed_app.h>
+#include <rex/ui/graphics_provider.h>
+#include <rex/ui/immediate_drawer.h>
+#include <rex/ui/imgui_drawer.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/kernel/flags.h>
+#include <rex/graphics/flags.h>
 
-#include <cstdio>
-#include <cstdlib>
-#include <mutex>
+#include <imgui.h>
+
+#include <atomic>
+#include <filesystem>
+#include <thread>
 
 #ifdef _WIN32
 #include <windows.h>
-#endif
+#include <cstdio>
+#include <csignal>
+#include <cstdlib>
+#include <cstdarg>
+#include <mutex>
 
-// ── Crash Logging ──────────────────────────────────────────────────
+static FILE* g_crash_log = nullptr;
+static std::mutex g_crash_mutex;
 
-static std::mutex g_crash_log_mutex;
-
-static void WriteCrashLog(const char* msg) {
-    std::lock_guard<std::mutex> lock(g_crash_log_mutex);
-    FILE* f = fopen("crazytaxi_crash.log", "a");
-    if (f) {
-        fprintf(f, "%s\n", msg);
-        fclose(f);
+static void crash_log_write(const char* fmt, ...) {
+    std::lock_guard<std::mutex> lock(g_crash_mutex);
+    if (!g_crash_log) {
+        g_crash_log = fopen("crazytaxi_crash.log", "a");
+        if (!g_crash_log) return;
     }
-    fprintf(stderr, "%s\n", msg);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(g_crash_log, fmt, ap);
+    va_end(ap);
+    fflush(g_crash_log);
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fflush(stderr);
 }
 
-#ifdef _WIN32
-// Vectored Exception Handler -- catches access violations and other crashes
-// in recompiled PPC code. Logs full register state for debugging.
-static LONG WINAPI CrashVEH(PEXCEPTION_POINTERS info) {
-    DWORD code = info->ExceptionRecord->ExceptionCode;
-
-    // Skip non-fatal exceptions
-    if (code == DBG_PRINTEXCEPTION_C || code == DBG_PRINTEXCEPTION_WIDE_C)
-        return EXCEPTION_CONTINUE_SEARCH;
-
-    // Decode C++ exceptions (MSVC magic: 0xE06D7363)
-    if (code == 0xE06D7363)
-        return EXCEPTION_CONTINUE_SEARCH;
-
-    char buf[2048];
-    CONTEXT* ctx = info->ContextRecord;
-    snprintf(buf, sizeof(buf),
-        "=== CRASH ===\n"
-        "Exception: 0x%08lX at RIP=0x%016llX\n"
-        "RAX=%016llX RBX=%016llX RCX=%016llX RDX=%016llX\n"
-        "RSI=%016llX RDI=%016llX RBP=%016llX RSP=%016llX\n"
-        "R8 =%016llX R9 =%016llX R10=%016llX R11=%016llX\n"
-        "R12=%016llX R13=%016llX R14=%016llX R15=%016llX\n",
-        code, (unsigned long long)ctx->Rip,
-        (unsigned long long)ctx->Rax, (unsigned long long)ctx->Rbx,
-        (unsigned long long)ctx->Rcx, (unsigned long long)ctx->Rdx,
-        (unsigned long long)ctx->Rsi, (unsigned long long)ctx->Rdi,
-        (unsigned long long)ctx->Rbp, (unsigned long long)ctx->Rsp,
-        (unsigned long long)ctx->R8,  (unsigned long long)ctx->R9,
-        (unsigned long long)ctx->R10, (unsigned long long)ctx->R11,
-        (unsigned long long)ctx->R12, (unsigned long long)ctx->R13,
-        (unsigned long long)ctx->R14, (unsigned long long)ctx->R15);
-
-    WriteCrashLog(buf);
-
-    // Try to extract PPC context from RDI (first arg in recompiled functions)
-    if (ctx->Rdi) {
-        // PPCContext is passed as first argument in RDI
-        snprintf(buf, sizeof(buf),
-            "PPC Context (RDI=0x%016llX):\n"
-            "  (PPC register dump requires running binary)\n",
-            (unsigned long long)ctx->Rdi);
-        WriteCrashLog(buf);
+static struct StderrRedirect_ {
+    StderrRedirect_() {
+        freopen("crazytaxi_stderr.log", "w", stderr);
+        fprintf(stderr, "[crazytaxi] stderr redirected to log file\n");
+        fflush(stderr);
+        g_crash_log = fopen("crazytaxi_crash.log", "w");
+        if (g_crash_log) {
+            fprintf(g_crash_log, "[crazytaxi] Crash log initialized\n");
+            fflush(g_crash_log);
+        }
+        std::set_terminate([]() {
+            crash_log_write("\n========== TERMINATE CALLED ==========\n");
+            crash_log_write("Thread: %lu\n", GetCurrentThreadId());
+            try { std::rethrow_exception(std::current_exception()); }
+            catch (const std::exception& e) {
+                crash_log_write("std::exception: %s\n", e.what());
+            }
+            catch (...) {
+                crash_log_write("Unknown exception type\n");
+            }
+            crash_log_write("========================================\n");
+            std::abort();
+        });
     }
+} g_stderr_redirect_;
 
+// Guest memory base (set after runtime->Setup())
+static uint64_t g_guest_base = 0;
+static uint64_t g_guest_end = 0;
+
+// VEH handler: log ALL crashes/exceptions
+static LONG CALLBACK CrashVEH(EXCEPTION_POINTERS* ep) {
+    auto* ctx = ep->ContextRecord;
+    auto* rec = ep->ExceptionRecord;
+    if (rec->ExceptionCode == EXCEPTION_BREAKPOINT ||
+        rec->ExceptionCode == EXCEPTION_SINGLE_STEP ||
+        rec->ExceptionCode == 0x406D1388 ||
+        rec->ExceptionCode == 0x40010006) return EXCEPTION_CONTINUE_SEARCH;
+    if (rec->ExceptionCode == STATUS_ACCESS_VIOLATION && g_guest_end > 0) {
+        uint64_t addr = rec->ExceptionInformation[1];
+        if (addr >= g_guest_base && addr < g_guest_end)
+            return EXCEPTION_CONTINUE_SEARCH;
+    }
+    crash_log_write("\n========== EXCEPTION ==========\n");
+    crash_log_write("Thread: %lu\n", GetCurrentThreadId());
+    crash_log_write("Exception: 0x%08lX at RIP=0x%016llX\n",
+            rec->ExceptionCode, (unsigned long long)ctx->Rip);
+    if (rec->ExceptionCode == STATUS_ACCESS_VIOLATION) {
+        crash_log_write("Access address: 0x%016llX (%s)\n",
+                (unsigned long long)rec->ExceptionInformation[1],
+                rec->ExceptionInformation[0] == 0 ? "READ" : "WRITE");
+    }
+    HMODULE hMod = NULL;
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                       (LPCSTR)ctx->Rip, &hMod);
+    if (hMod) {
+        crash_log_write("Module base: 0x%016llX  RVA: 0x%08llX\n",
+                (unsigned long long)hMod,
+                (unsigned long long)(ctx->Rip - (uint64_t)hMod));
+    }
+    if (rec->ExceptionCode == 0xE06D7363) {
+        crash_log_write("*** C++ EXCEPTION (throw) ***\n");
+        if (rec->NumberParameters >= 3 && rec->ExceptionInformation[0] == 0x19930520) {
+            __try {
+                std::exception* ex = reinterpret_cast<std::exception*>(rec->ExceptionInformation[1]);
+                if (ex) crash_log_write("what(): %s\n", ex->what());
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                crash_log_write("(could not read exception object)\n");
+            }
+        }
+    }
+    crash_log_write("RAX=0x%016llX RBX=0x%016llX RCX=0x%016llX RDX=0x%016llX\n",
+            ctx->Rax, ctx->Rbx, ctx->Rcx, ctx->Rdx);
+    crash_log_write("RSI=0x%016llX RDI=0x%016llX RSP=0x%016llX RBP=0x%016llX\n",
+            ctx->Rsi, ctx->Rdi, ctx->Rsp, ctx->Rbp);
+    crash_log_write("R8 =0x%016llX R9 =0x%016llX R10=0x%016llX R11=0x%016llX\n",
+            ctx->R8, ctx->R9, ctx->R10, ctx->R11);
+    crash_log_write("R12=0x%016llX R13=0x%016llX R14=0x%016llX R15=0x%016llX\n",
+            ctx->R12, ctx->R13, ctx->R14, ctx->R15);
+    __try {
+        crash_log_write("\nStack (RSP):\n");
+        uint64_t* sp = (uint64_t*)ctx->Rsp;
+        for (int i = 0; i < 16; i++) {
+            __try {
+                crash_log_write("  [RSP+%02X] = 0x%016llX\n", i*8, sp[i]);
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                crash_log_write("  [RSP+%02X] = <unreadable>\n", i*8);
+            }
+        }
+    } __except(EXCEPTION_EXECUTE_HANDLER) {}
+    crash_log_write("================================\n");
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-// Null page handler -- handles reads from unmapped guest memory by zeroing
-// the destination register and continuing. Decodes x86-64 MOV instructions
-// with full REX prefix and ModR/M support.
-static LONG WINAPI NullPageHandler(PEXCEPTION_POINTERS info) {
-    if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION)
-        return EXCEPTION_CONTINUE_SEARCH;
-
-    // Only handle reads (type 0)
-    if (info->ExceptionRecord->NumberParameters < 2 ||
-        info->ExceptionRecord->ExceptionInformation[0] != 0)
-        return EXCEPTION_CONTINUE_SEARCH;
-
-    CONTEXT* ctx = info->ContextRecord;
-    uint8_t* rip = (uint8_t*)ctx->Rip;
-
-    // Decode REX prefix
-    uint8_t rex = 0;
-    int pos = 0;
-    if ((rip[pos] & 0xF0) == 0x40) {
-        rex = rip[pos++];
-    }
-
-    // Handle MOV r64, [mem] (opcode 0x8B)
-    if (rip[pos] == 0x8B) {
-        pos++;
-        uint8_t modrm = rip[pos++];
-        int reg = ((modrm >> 3) & 7) | ((rex & 4) << 1);
-
-        // Zero the destination register
-        DWORD64* regs[] = {
-            &ctx->Rax, &ctx->Rcx, &ctx->Rdx, &ctx->Rbx,
-            &ctx->Rsp, &ctx->Rbp, &ctx->Rsi, &ctx->Rdi,
-            &ctx->R8,  &ctx->R9,  &ctx->R10, &ctx->R11,
-            &ctx->R12, &ctx->R13, &ctx->R14, &ctx->R15
-        };
-        *regs[reg] = 0;
-
-        // Skip the rest of the instruction (ModR/M + SIB + displacement)
-        uint8_t mod = modrm >> 6;
-        uint8_t rm = (modrm & 7) | ((rex & 1) << 3);
-        if (rm == 4 && mod != 3) pos++; // SIB byte
-        if (mod == 0 && (rm & 7) == 5) pos += 4; // disp32
-        else if (mod == 1) pos += 1; // disp8
-        else if (mod == 2) pos += 4; // disp32
-
-        ctx->Rip += pos;
+// Commit guest virtual pages on demand
+static LONG CALLBACK GuestPageCommitHandler(EXCEPTION_POINTERS* ep) {
+    auto* rec = ep->ExceptionRecord;
+    if (rec->ExceptionCode != STATUS_ACCESS_VIOLATION) return EXCEPTION_CONTINUE_SEARCH;
+    uint64_t addr = rec->ExceptionInformation[1];
+    if (addr < g_guest_base || addr >= g_guest_end) return EXCEPTION_CONTINUE_SEARCH;
+    void* page = (void*)(addr & ~0xFFFULL);
+    void* result = VirtualAlloc(page, 0x1000, MEM_COMMIT, PAGE_READWRITE);
+    if (result) {
+        static int count = 0;
+        if (++count <= 50) {
+            uint32_t ppc_addr = (uint32_t)(addr - g_guest_base);
+            crash_log_write("[PAGECOMMIT] Committed page for PPC 0x%08X (host %p) %s\n",
+                    ppc_addr, page,
+                    rec->ExceptionInformation[0] == 0 ? "READ" : "WRITE");
+        }
         return EXCEPTION_CONTINUE_EXECUTION;
     }
-
     return EXCEPTION_CONTINUE_SEARCH;
 }
-#endif // _WIN32
 
-// ── Application ────────────────────────────────────────────────────
-
-class CrazyTaxiApp : public rex::ReXApp {
-public:
-    using rex::ReXApp::ReXApp;
-
-    static std::unique_ptr<rex::ui::WindowedApp> Create(
-        rex::ui::WindowedAppContext& ctx) {
-        return std::unique_ptr<CrazyTaxiApp>(new CrazyTaxiApp(ctx, "crazytaxi",
-            {PPC_CODE_BASE, PPC_CODE_SIZE, PPC_IMAGE_BASE,
-             PPC_IMAGE_SIZE, PPCFuncMappings}));
+static struct VEHGuard_ {
+    VEHGuard_() {
+        AddVectoredExceptionHandler(0, CrashVEH);
     }
-
-protected:
-    void OnPreSetup() override {
-        // Install exception handlers before anything else
-#ifdef _WIN32
-        AddVectoredExceptionHandler(1, NullPageHandler);  // high priority
-        AddVectoredExceptionHandler(0, CrashVEH);         // low priority
+} g_veh_guard_;
 #endif
 
-        // Load settings
-        CrazyTaxiSettings::Load();
-    }
-
-    void OnPostSetup() override {
-        // Window title
-        // (ReXApp handles window creation via the SDK)
-    }
-
-    void OnCreateDialogs() override {
-        // ImGui config dialogs will be registered here
-        CrazyTaxiMenu::Register();
-    }
-
-    void OnShutdown() override {
-        CrazyTaxiSettings::Save();
+class DebugOverlayDialog : public rex::ui::ImGuiDialog {
+public:
+    DebugOverlayDialog(rex::ui::ImGuiDrawer* imgui_drawer)
+        : ImGuiDialog(imgui_drawer) {}
+protected:
+    void OnDraw(ImGuiIO& io) override {
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(220, 60), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowBgAlpha(0.5f);
+        if (ImGui::Begin("Debug##overlay", nullptr, ImGuiWindowFlags_NoCollapse)) {
+            ImGui::Text("%.1f FPS (%.2f ms)", io.Framerate, 1000.0f / io.Framerate);
+        }
+        ImGui::End();
     }
 };
 
-REX_DEFINE_APP(crazytaxi, CrazyTaxiApp::Create)
+class CrazyTaxiApp : public rex::ui::WindowedApp, public rex::ui::WindowListener {
+public:
+    static std::unique_ptr<rex::ui::WindowedApp> Create(rex::ui::WindowedAppContext& ctx) {
+        return std::make_unique<CrazyTaxiApp>(ctx);
+    }
+
+    CrazyTaxiApp(rex::ui::WindowedAppContext& ctx)
+        : WindowedApp(ctx, "crazytaxi", "[game_directory]") {
+        AddPositionalOption("game_directory");
+    }
+
+    bool OnInitialize() override {
+        auto exe_dir = rex::filesystem::GetExecutableFolder();
+
+        std::filesystem::path game_dir;
+        if (auto arg = GetArgument("game_directory")) {
+            game_dir = *arg;
+        } else {
+            game_dir = exe_dir / "assets";
+        }
+
+        std::string log_file_cvar = REXCVAR_GET(log_file);
+        if (log_file_cvar.empty()) log_file_cvar = "crazytaxi_sdk.log";
+        std::string log_level_str = REXCVAR_GET(log_level);
+        if (log_level_str == "info") {
+            log_level_str = "error";
+        }
+        auto log_config = rex::BuildLogConfig(
+            log_file_cvar.c_str(),
+            log_level_str, {});
+        rex::InitLogging(log_config);
+        rex::RegisterLogLevelCallback();
+        // Let XAM dialogs render normally (garbled text but navigable).
+        // headless=true auto-dismisses signin but doesn't fully set up a user profile,
+        // causing the game to get stuck on the Press Start screen.
+        // REXCVAR_SET(headless, true);
+        // Allow invalid texture fetch constants (Crazy Taxi uses some non-standard ones)
+        REXCVAR_SET(gpu_allow_invalid_fetch_constants, true);
+
+        REXLOG_INFO("crazytaxi starting");
+        REXLOG_INFO("  Game directory: {}", game_dir.string());
+
+        runtime_ = std::make_unique<rex::Runtime>(game_dir);
+        runtime_->set_app_context(&app_context());
+
+        auto status = runtime_->Setup(
+            static_cast<uint32_t>(PPC_CODE_BASE),
+            static_cast<uint32_t>(PPC_CODE_SIZE),
+            static_cast<uint32_t>(PPC_IMAGE_BASE),
+            static_cast<uint32_t>(PPC_IMAGE_SIZE),
+            PPCFuncMappings);
+        if (XFAILED(status)) {
+            REXLOG_ERROR("Runtime setup failed: {:08X}", status);
+            return false;
+        }
+
+#ifdef _WIN32
+        g_guest_base = (uint64_t)runtime_->virtual_membase();
+        g_guest_end = g_guest_base + 0x200000000ULL;
+        REXLOG_INFO("virtual_membase = {:016X} (guest range: {:X} - {:X})",
+                    g_guest_base, g_guest_base, g_guest_end);
+        AddVectoredExceptionHandler(0, GuestPageCommitHandler);
+#endif
+
+        status = runtime_->LoadXexImage("game:\\default.xex");
+        if (XFAILED(status)) {
+            REXLOG_ERROR("Failed to load XEX: {:08X}", status);
+            return false;
+        }
+
+        window_ = rex::ui::Window::Create(app_context(), "Crazy Taxi", 1280, 720);
+        if (!window_) {
+            REXLOG_ERROR("Failed to create window");
+            return false;
+        }
+
+        window_->AddListener(this);
+        window_->Open();
+
+        auto* graphics_system = runtime_->graphics_system();
+        if (graphics_system && graphics_system->presenter()) {
+            auto* presenter = graphics_system->presenter();
+            auto* provider = graphics_system->provider();
+            if (provider) {
+                immediate_drawer_ = provider->CreateImmediateDrawer();
+                if (immediate_drawer_) {
+                    immediate_drawer_->SetPresenter(presenter);
+                    imgui_drawer_ = std::make_unique<rex::ui::ImGuiDrawer>(window_.get(), 64);
+                    imgui_drawer_->SetPresenterAndImmediateDrawer(presenter, immediate_drawer_.get());
+                    debug_overlay_ = std::unique_ptr<DebugOverlayDialog>(
+                        new DebugOverlayDialog(imgui_drawer_.get()));
+                    runtime_->set_display_window(window_.get());
+                    runtime_->set_imgui_drawer(imgui_drawer_.get());
+                }
+            }
+            window_->SetPresenter(presenter);
+        }
+
+        // Register keyboard input driver
+        if (runtime_->kernel_state() && runtime_->kernel_state()->input_system()) {
+            auto kbd = std::make_unique<KeyboardInputDriver>(window_.get());
+            kbd->Setup();
+            runtime_->kernel_state()->input_system()->InsertDriverFront(std::move(kbd));
+            REXLOG_INFO("Keyboard + gamepad input driver registered");
+        }
+
+        app_context().CallInUIThreadDeferred([this]() {
+            auto main_thread = runtime_->LaunchModule();
+            if (!main_thread) {
+                REXLOG_ERROR("Failed to launch module");
+                app_context().QuitFromUIThread();
+                return;
+            }
+
+            module_thread_ = std::thread([this, main_thread = std::move(main_thread)]() mutable {
+                try {
+                    main_thread->Wait(0, 0, 0, nullptr);
+                } catch (const std::exception& e) {
+                    crash_log_write("\n========== C++ EXCEPTION ==========\n");
+                    crash_log_write("Thread: %lu\n", GetCurrentThreadId());
+                    crash_log_write("what(): %s\n", e.what());
+                    crash_log_write("====================================\n");
+                } catch (...) {
+                    crash_log_write("\n========== UNKNOWN C++ EXCEPTION ==========\n");
+                    crash_log_write("Thread: %lu\n", GetCurrentThreadId());
+                    crash_log_write("=============================================\n");
+                }
+                REXLOG_INFO("Execution complete");
+                if (!shutting_down_.load(std::memory_order_acquire)) {
+                    app_context().CallInUIThread([this]() {
+                        app_context().QuitFromUIThread();
+                    });
+                }
+            });
+        });
+
+        return true;
+    }
+
+    void OnClosing(rex::ui::UIEvent& e) override {
+        (void)e;
+        REXLOG_INFO("Window closing, shutting down...");
+        shutting_down_.store(true, std::memory_order_release);
+        if (runtime_ && runtime_->kernel_state()) {
+            runtime_->kernel_state()->TerminateTitle();
+        }
+        app_context().QuitFromUIThread();
+    }
+
+    void OnDestroy() override {
+        debug_overlay_.reset();
+        if (imgui_drawer_) {
+            imgui_drawer_->SetPresenterAndImmediateDrawer(nullptr, nullptr);
+            imgui_drawer_.reset();
+        }
+        if (immediate_drawer_) {
+            immediate_drawer_->SetPresenter(nullptr);
+            immediate_drawer_.reset();
+        }
+        if (runtime_) {
+            runtime_->set_display_window(nullptr);
+            runtime_->set_imgui_drawer(nullptr);
+        }
+        if (window_) {
+            window_->SetPresenter(nullptr);
+        }
+        if (module_thread_.joinable()) {
+            module_thread_.join();
+        }
+        if (window_) {
+            window_->RemoveListener(this);
+        }
+        window_.reset();
+        runtime_.reset();
+    }
+
+private:
+    std::unique_ptr<rex::Runtime> runtime_;
+    std::unique_ptr<rex::ui::Window> window_;
+    std::thread module_thread_;
+    std::atomic<bool> shutting_down_{false};
+    std::unique_ptr<rex::ui::ImmediateDrawer> immediate_drawer_;
+    std::unique_ptr<rex::ui::ImGuiDrawer> imgui_drawer_;
+    std::unique_ptr<DebugOverlayDialog> debug_overlay_;
+};
+
+XE_DEFINE_WINDOWED_APP(crazytaxi, CrazyTaxiApp::Create)

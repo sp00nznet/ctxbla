@@ -3,99 +3,57 @@
 // These override or supplement the ReXGlue SDK's built-in kernel stubs
 // for functionality specific to Crazy Taxi.
 
-#include <rex/ppc.h>
-#include <rex/types.h>
-#include <rex/logging.h>
-
+#include "crazytaxi_config.h"
+#include <rex/runtime/guest/context.h>
+#include <rex/runtime/guest/memory.h>
 #include <cstdio>
-#include <cstring>
 
-// ── Stub Macro ─────────────────────────────────────────────────────
-// Simple no-op stubs that log on first call and return 0.
-#define CT_STUB(name)                                                          \
-    extern "C" void __imp__##name(PPCContext& ctx, uint8_t* base) {            \
-        static bool warned = false;                                            \
-        if (!warned) {                                                         \
-            printf("[STUB] " #name " called\n");                               \
-            warned = true;                                                     \
-        }                                                                      \
-        ctx.r3.u64 = 0;                                                        \
-    }
+using namespace rex::runtime::guest;
 
-// ── XAM UI Stubs ──────────────────────────────────────────────────
-// Crazy Taxi shows various Xbox UI popups that we stub out.
-CT_STUB(XamShowGamerCardUI)
-CT_STUB(XamShowAchievementsUI)
-CT_STUB(XamShowMarketplaceUI)
-CT_STUB(XamShowFriendsUI)
-CT_STUB(XamShowMessageComposeUI)
+#define CT_STUB_RETURN(name, val) \
+    extern "C" PPC_FUNC(name) { (void)base; ctx.r3.u64 = (val); }
 
-// ── Networking Stubs ───────────────────────────────────────────────
-// Crazy Taxi is single-player but may probe network APIs.
-CT_STUB(NetDll_XNetStartup)
-CT_STUB(NetDll_XNetCleanup)
-CT_STUB(NetDll_XNetUnregisterInAddr)
-CT_STUB(NetDll_XNetConnect)
-CT_STUB(NetDll_XNetGetConnectStatus)
+#define CT_STUB(name) CT_STUB_RETURN(name, 0)
 
-// ── USB Camera Stubs ───────────────────────────────────────────────
-CT_STUB(XUsbcamCreate)
-CT_STUB(XUsbcamDestroy)
-CT_STUB(XUsbcamGetState)
-CT_STUB(XUsbcamSetConfig)
-CT_STUB(XUsbcamSetView)
-CT_STUB(XUsbcamSetCaptureMode)
-CT_STUB(XUsbcamReadFrame)
+// XAM UI stubs
+CT_STUB(__imp__XamShowGamerCardUI)
+CT_STUB(__imp__XamShowAchievementsUI)
+CT_STUB(__imp__XamShowMarketplaceUI)
+CT_STUB(__imp__XamShowFriendsUI)
+CT_STUB(__imp__XamShowMessageComposeUI)
 
-// ── Leaderboard / Content Stubs ────────────────────────────────────
-CT_STUB(XUserWriteAchievements)
-CT_STUB(XUserCreateStatsEnumeratorByRank)
-CT_STUB(XUserCreateStatsEnumeratorByXuid)
+// Networking stubs (XNetStartup/XNetCleanup provided by SDK)
+CT_STUB(__imp__NetDll_XNetUnregisterInAddr)
+CT_STUB(__imp__NetDll_XNetConnect)
+CT_STUB(__imp__NetDll_XNetGetConnectStatus)
 
-// ── Content License Override ───────────────────────────────────────
-// Override the content license check to return a full license mask.
-// This ensures the game runs as a fully licensed title, not a trial.
-// The specific function address will need to be identified during
-// recompilation testing.
-//
-// TODO: Identify the license check function in Crazy Taxi's code.
-//       Pattern from vig8: override function that returns license mask
-//       to return 0xFFFFFFFF (all bits set = full license).
+// USB Camera stubs
+CT_STUB(__imp__XUsbcamCreate)
+CT_STUB(__imp__XUsbcamDestroy)
+CT_STUB(__imp__XUsbcamGetState)
+CT_STUB(__imp__XUsbcamSetConfig)
+CT_STUB(__imp__XUsbcamSetView)
+CT_STUB(__imp__XUsbcamSetCaptureMode)
+CT_STUB(__imp__XUsbcamReadFrame)
 
-// ── VdSwap Frame Limiter ───────────────────────────────────────────
-// Precise 60 Hz frame pacing using QueryPerformanceCounter.
-// Ported from simpsonsarcade's timing fix -- the original Sleep(16)
-// actually sleeps ~31ms on Windows due to 15.6ms timer granularity.
-#ifdef _WIN32
-#include <windows.h>
+// Leaderboard / Content stubs
+CT_STUB(__imp__XUserWriteAchievements)
+CT_STUB(__imp__XUserCreateStatsEnumeratorByRank)
+CT_STUB(__imp__XUserCreateStatsEnumeratorByXuid)
+CT_STUB(__imp__XamShowGamerCardUIForXUID)
+CT_STUB(__imp__XamUserCreateStatsEnumerator)
 
-extern "C" void __imp__VdSwap(PPCContext& ctx, uint8_t* base) {
-    static LARGE_INTEGER s_freq = {}, s_last = {};
-    if (s_freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&s_freq);
-        QueryPerformanceCounter(&s_last);
-    }
+// Kernel IO stubs
+CT_STUB(__imp__IoCheckShareAccess)
+CT_STUB(__imp__IoCompleteRequest)
+CT_STUB(__imp__IoDeleteDevice)
+CT_STUB(__imp__IoInvalidDeviceRequest)
+CT_STUB(__imp__IoRemoveShareAccess)
+CT_STUB(__imp__IoSetShareAccess)
 
-    const int64_t target_us = 16667; // 16.667ms = 60 Hz
+// Kernel Object Manager stubs
+CT_STUB(__imp__ObIsTitleObject)
+CT_STUB(__imp__ObReferenceObject)
 
-    LARGE_INTEGER now;
-    for (;;) {
-        // Pump Win32 messages to keep the window responsive
-        MSG msg;
-        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-
-        QueryPerformanceCounter(&now);
-        int64_t elapsed_us =
-            (now.QuadPart - s_last.QuadPart) * 1000000 / s_freq.QuadPart;
-        if (elapsed_us >= target_us) break;
-
-        // Coarse yield if more than 2ms remain
-        if (elapsed_us < target_us - 2000) Sleep(1);
-    }
-
-    QueryPerformanceCounter(&s_last);
-}
-#endif
+// Kernel RTL stubs
+CT_STUB(__imp__RtlUpcaseUnicodeChar)

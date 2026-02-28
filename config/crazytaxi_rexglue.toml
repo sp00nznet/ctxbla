@@ -1,21 +1,25 @@
-# ReXGlue SDK code generation config for Crazy Taxi (XBLA)
-# Generates crazytaxi_init.cpp/h and crazytaxi_config.h
+# Crazy Taxi (XBLA) - ReXGlue Configuration
 
-[main]
-app_name = "crazytaxi"
-xex_path = "../extracted/default.xex"
-ppc_directory = "../ppc"
-out_directory = "../generated"
+project_name = "crazytaxi"
+file_path = "../extracted/default.xex"
+out_directory_path = "../generated"
 
-# Address layout from PE analysis
-image_base = 0x82000000
-code_base = 0x820C0000
-code_size = 0x00209000
-image_size = 0x00BC0000
+# Code generation options (conservative - all disabled for initial pass)
+skip_lr = false
+skip_msr = false
+ctr_as_local = false
+xer_as_local = false
+cr_as_local = false
+reserved_as_local = false
+non_argument_as_local = false
+non_volatile_as_local = false
+generate_exception_handlers = false
 
-# Entry point (_xstart)
-entry_point = 0x8212A5F0
+[analysis]
+max_jump_extension = 65536
 
-# Import table
-idata_base = 0x82980000
-idata_size = 0x00000384
+# Manual function overrides for cross-function branches
+# These are tail-call targets that rexglue's analysis doesn't detect as function starts
+[functions]
+0x821092A0 = { end = 0x821092BC }  # tail call from 0x821002EC
+0x82108770 = { end = 0x82108788 }  # tail call from 0x82100958
