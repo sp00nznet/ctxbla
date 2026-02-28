@@ -88,3 +88,13 @@
     } \
     _fn(ctx, base); \
 } while(0)
+
+// ============================================================================
+// XAM dialog auto-accept redirects.
+// The SDK defines these via GUEST_FUNCTION_HOOK in rexkernel.lib (whole-archive)
+// which wins the linker symbol race. Macro-redirect all call sites in the
+// generated recomp code to our project-level stubs instead.
+// ============================================================================
+// Only redirect the main message box. The SDK already handles
+// XamShowDeviceSelectorUI headlessly, and XamShowMessageBoxUIEx is a no-op stub.
+#define __imp__XamShowMessageBoxUI ct_auto_accept_messagebox
