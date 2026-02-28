@@ -161,11 +161,10 @@ Two fixes are applied (ported from [simpsonsarcade](https://github.com/sp00nznet
 
 ## Known Issues
 
-- **Crashes during gameplay** -- The game can crash during fare drop-offs and at high speed (e.g. driving downhill fast). Stability is still a work in progress.
+- **Crashes during gameplay** -- The game can crash during fare drop-offs and at high speed (e.g. driving downhill fast). Likely related to unhandled XMA audio triggers during gameplay events.
 - **Title screen timing** -- You must wait until the "Hey Hey, Crazy Taxi!" voice line plays before pressing Start. Pressing Start too early will leave you stuck at the menu.
 - **Alt-tab breaks arcade mode** -- If you alt-tab away after selecting Arcade Rules, the game will hang on a black screen.
 - **No in-game audio** -- XMA register 0x0601 is unhandled (SDK limitation). Title screen and demo audio works.
-- **Garbled XAM dialogs** -- Sign-in prompts show corrupted/wingdings text. You can fumble through them to reach the main menu.
 
 ## References
 
