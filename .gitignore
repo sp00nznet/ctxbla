@@ -35,3 +35,8 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# XenonRecomp and ReXGlue output: made locally from your own XEX by Quick
+# Start steps 3-4, never committed (REPO_RULES section 3)
+generated/
+ppc/
