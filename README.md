@@ -65,11 +65,11 @@ ctxbla/
 ├── docs/
 │   ├── binary-analysis.md      # PE section layout and analysis
 │   └── xenonrecomp-workflow.md  # Step-by-step recompilation guide
-├── generated/                  # XenonRecomp-generated glue code
+├── generated/                  # ReXGlue codegen output (step 4; gitignored, never committed)
 │   ├── crazytaxi_config.h      # Address constants
 │   ├── crazytaxi_init.cpp/h    # Function table linkage
 │   └── sources.cmake           # Generated source list
-├── ppc/                        # Recompiled PPC -> C++ (gitignored, large)
+├── ppc/                        # XenonRecomp output (step 3; gitignored, never committed)
 │   └── ppc_config.h            # PPC image constants
 ├── project/                    # ReXGlue SDK project (active build)
 │   ├── CMakeLists.txt          # C++23, Clang, links rex:: libraries
@@ -177,6 +177,8 @@ Two fixes are applied (ported from [simpsonsarcade](https://github.com/sp00nznet
 
 ## License
 
-This repository contains no copyrighted game assets. You must provide your own legally obtained copy of Crazy Taxi (XBLA). The tools and runtime code are provided for educational and preservation purposes.
+MIT: see [LICENSE](LICENSE). This repository contains no copyrighted game assets
+and no code generated from the game: `ppc/` and `generated/` are made on your
+machine by Quick Start steps 3-4. You must provide your own legally obtained copy of Crazy Taxi (XBLA). The tools and runtime code are provided for educational and preservation purposes.
 
 *Now shut up and drive.*
